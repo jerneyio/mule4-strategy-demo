@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="310d1c00-e23f-4c24-97a7-9a2749b75867" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<flow name="strategy-demoFlow" doc:id="fea71375-88fd-41de-b502-e0921da4b0a9" >
+		<http:listener doc:name="Listener" doc:id="d864cdbe-bc07-47f5-8b25-2230bb9e6f3e" config-ref="HTTP_Listener_config" path="/csv"/>
+		<ee:transform doc:name="Set Payload" doc:id="58104809-e2bd-468b-9d4e-59974487bd5d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+// Representation of CSV w/ no headers
+[
+	{"0" : "12", "1" : "12/12/2011", "2" : "01/01/2012", "3": "512.34"},
+	{"0" : "13", "1" : "06/14/2011", "2" : "01/01/2015", "3": "12.67"},
+	{"0" : "14", "1" : "07/01/2011", "2" : "01/01/2012", "3": "2.65"},
+	{"0" : "15", "1" : "02/17/2011", "2" : "01/01/2015", "3": "90.22"}
+]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="type1" doc:name="csvType" doc:id="0b0ea17c-78a0-4bdf-ac8a-3eb9ec2a544c" variableName="csvType"/>
+		<choice doc:name="Choice" doc:id="67ba44d6-13d2-415f-8b78-5cd70ef07ae1" >
+			<when expression='#[vars.csvType == "type1"]'>
+				<logger level="INFO" doc:name="Logger" doc:id="9ac387d5-5774-4dcf-87da-63adacbbc208" message="Using Type 1 Validator"/>
+				<java:new doc:name="CSV Type 1 Validator" doc:id="2c5e059b-79d0-4aa0-bf31-bd9cba2ac4ed" class="io.jerney.csv.validation.strategy.CSVType1Validator" constructor="CSVType1Validator()" target="validationRule"/>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="382fb6e5-31ec-4752-b17f-aefbfa32f403" message="Using Default Validator"/>
+				<java:new doc:name="CSV Default Validator" doc:id="b040c417-65e3-4b71-a8f8-f5bf8ae0e125" class="io.jerney.csv.validation.strategy.CSVDefaultValidator" constructor="CSVDefaultValidator()" target="validationRule"/>
+			</otherwise>
+		</choice>
+		<java:new constructor="CSVValidator(CSVRowValidationRule)" doc:name="CSV Validator" doc:id="6c8723b5-9869-4f99-87d5-7540054bff43" class="io.jerney.csv.validation.CSVValidator" target="csvValidator">
+			<java:args ><![CDATA[#[{
+	rule: vars.validationRule
+}]]]></java:args>
+		</java:new>
+		<java:invoke method="validate(java.util.List)" doc:name="Validate CSV" doc:id="a02606ff-e899-4e52-a6e2-aadb6cdb7a40" instance="#[vars.csvValidator]" class="io.jerney.csv.validation.CSVValidator" target="validationResult">
+			<java:args ><![CDATA[#[{
+	csv: payload
+}]]]></java:args>
+		</java:invoke>
+		<ee:transform doc:name="Format output" doc:id="607a1bb8-b91a-4395-9e90-9b2d392a2dcf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun formatResult(res) =
+  if (res) "pass" else "fail"
+---
+{ "result": formatResult(vars.validationResult) }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
